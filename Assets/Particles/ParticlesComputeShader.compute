@@ -1,0 +1,227 @@
+#pragma kernel UpdateParticles
+#pragma kernel UpdateCollisions
+
+#pragma kernel AltUpdateParticles
+#pragma kernel AltUpdateCollisions
+
+RWTexture2D<float4> Result;
+
+struct Particle {
+    float2 pos;
+    float2 oldPos;
+    float3 col;
+};
+
+RWStructuredBuffer<Particle> particles;
+
+uint Length;
+
+int2 Res;
+
+uint SubSteps;
+
+float DeltaTime;
+
+bool Clicked;
+
+//Custom constraints
+
+//Circle:
+float2 CirclePos;
+float CircleRadius;
+
+//Tuneable Parameters
+float SpeedClamp;
+
+float BounceDamp;
+
+void AddConstraints(inout Particle particle) {
+    const float2 vel = (particle.pos.xy - particle.oldPos.xy) * BounceDamp;
+
+    //If collision:
+    //Teleport back into screen
+    //Move the oldPos to keep the speed and angle consistent
+    // 
+    // 
+    //For circle:
+    const float2 axis = particle.pos.xy - CirclePos.xy;
+    const float dist = length(axis);
+
+    float4 screen = float4(2.5, 2.5, Res.x - 3.5, Res.y - 3.5);
+
+    //For pushing of edges
+    if (Clicked) {
+        screen.x = Res.x * 0.05;
+        screen.y = Res.y * 0.05;
+        screen.z = Res.x * 0.95;
+        screen.w = Res.y * 0.95;
+    }
+
+    if (dist < CircleRadius + 2.5) {
+        const float2 n = axis.xy / dist;
+        particle.pos.xy = CirclePos.xy + n.xy * (dist + 2.5);
+        particle.oldPos.xy = particle.pos.xy + vel.xy;
+    }
+
+    //For screen boundaries:
+    if (particle.pos.x < screen.x) {
+        particle.pos.x = screen.x;
+        particle.oldPos.x = particle.pos.x + vel.x;
+    }
+
+    else if (particle.pos.x > screen.z) {
+        particle.pos.x = screen.z;
+        particle.oldPos.x = particle.pos.x + vel.x;
+    }
+
+    if (particle.pos.y < screen.y) {
+        particle.pos.y = screen.y;
+        particle.oldPos.y = particle.pos.y + vel.y;
+    }
+
+    else if (particle.pos.y > screen.w) {
+        particle.pos.y = screen.w;
+        particle.oldPos.y = particle.pos.y + vel.y;
+    }
+}
+
+void AddParticleCollisions(inout Particle particle, uint idX) {
+    for (uint i = 0; i < Length; i++) {
+        if (i == idX) {
+            continue;
+        }
+
+        //Faster to use length() instead of distance() as we can't have negative
+        //Positions anyway
+        const float2 axis = particle.pos.xy - particles[i].pos.xy;
+        const float dist = length(axis);
+
+        if (dist < 5) {
+            const float2 offset = axis.xy / dist;
+            const float intersection = 5 - dist;
+
+            float2 vel1 = (particle.pos.xy - particle.oldPos.xy) * BounceDamp;
+            float2 vel2 = (particles[i].pos.xy - particles[i].oldPos.xy) * BounceDamp;
+
+            particle.pos.xy += offset.xy * intersection;
+            particles[i].pos.xy -= offset.xy * intersection;
+
+            //Reposition oldPos to maintain speed and angle
+            particle.oldPos.xy = particle.pos.xy + vel1.xy;
+            particles[i].oldPos.xy = particles[i].pos.xy + vel2.xy;
+        }
+    }
+}
+
+void Draw(Particle particle) {
+    //Set the pixel associated with this particle to white if it is on screen
+    if (particle.pos.x >= 0 && particle.pos.x < Res.x && particle.pos.y >= 0 && particle.pos.y < Res.y) {
+        //Create a circle-looking octogon, with pos being the middle of
+        //the circle
+        
+        float2 roundedPos = round(particle.pos.xy);
+
+        //The 5x3 middle of the octogon 
+        //Start 1 above the centre
+        int x1 = -2;
+        int y1 = 1;
+        //15 total pixels
+        for (uint i = 0; i < 15; i++) {
+            //If we have done 5, move down 1
+            if (i % 5 == 0 && i != 0) {
+                x1 = -2;
+                y1--;
+            }
+            //Need to do x - 2, as we actually start 2 out to the left
+            //Of the origin
+            Result[roundedPos + int2(x1, y1)] = float4(particle.col.r, particle.col.g, particle.col.b, 1);
+
+            x1++;
+        }
+
+        //The 2 3x1 bit at the top and bottom of the octogon
+        int x2 = -1;
+        int y2 = 2;
+        //6 total pixels
+        for (uint j = 0; j < 6; j++) {
+            //If we have done half, move down 4 to do the bottom bit
+            if (j % 3 == 0 && j != 0) {
+                x2 = -1;
+                y2 -= 4;
+            }
+
+            //Need to do x - 1 as we start 1 left of the origin
+            Result[roundedPos + int2(x2, y2)] = float4(particle.col.r, particle.col.g, particle.col.b, 1);
+
+            x2++;
+        }
+
+    }
+}
+
+void AddVelocity(inout Particle particle) {
+    float2 vel = particle.pos.xy - particle.oldPos.xy;
+
+    particle.oldPos.xy = particle.pos.xy;
+
+    vel.x = clamp(vel.x, -SpeedClamp, SpeedClamp);
+    vel.y = clamp(vel.y, -SpeedClamp, SpeedClamp);
+
+    //No need for deltaTime as vel is the difference between last frame
+    //And current frame position
+    particle.pos.xy += vel.xy;
+}
+
+//Uses no substeps
+[numthreads(100, 1, 1)]
+void UpdateParticles(uint3 id : SV_DispatchThreadID)
+{
+    Particle particle = particles[id.x];
+
+    AddVelocity(particle);
+
+    Draw(particle);
+
+    //Reassign at end so that the data changed is passed back
+    particles[id.x] = particle;
+}
+
+//Uses substeps
+[numthreads(100, 1, 1)]
+void UpdateCollisions(uint3 id : SV_DispatchThreadID)
+{
+    Particle particle = particles[id.x];
+
+    AddConstraints(particle);
+
+    AddParticleCollisions(particle, id.x);
+
+    //Reassign at end so that the data changed is passed back
+    particles[id.x] = particle;
+}
+
+
+//ALTERNATE VERSIONS FOR IF NUMPARTICLES < 32
+[numthreads(1, 1, 1)]
+void AltUpdateParticles(uint3 id : SV_DispatchThreadID) {
+    Particle particle = particles[id.x];
+
+    AddVelocity(particle);
+
+    Draw(particle);
+
+    //Reassign at end so that the data changed is passed back
+    particles[id.x] = particle;
+}
+
+[numthreads(1, 1, 1)]
+void AltUpdateCollisions(uint3 id : SV_DispatchThreadID) {
+    Particle particle = particles[id.x];
+
+    AddConstraints(particle);
+
+    AddParticleCollisions(particle, id.x);
+
+    //Reassign at end so that the data changed is passed back
+    particles[id.x] = particle;
+}
