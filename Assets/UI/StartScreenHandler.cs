@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using TMPro;
 using Unity.Mathematics;
 using Unity.VisualScripting;
 using UnityEditor.SearchService;
@@ -9,7 +10,7 @@ using UnityEngine.UI;
 
 public class StartScreenHandler : MonoBehaviour
 {
-    private Text text;
+    private TMP_Text text;
 
     [SerializeField]
     private GameObject inspector;
@@ -46,7 +47,9 @@ public class StartScreenHandler : MonoBehaviour
         particlesGenerator = mainCamera.GetComponent<ParticlesGenerator>();
         numParticles = particlesGenerator.numParticles;
 
-        text = GetComponent<Text>();
+        text = GetComponent<TMP_Text>();
+
+        ChangeText(textSettings[textIndex]);
     }
 
     private void Update()
@@ -82,7 +85,7 @@ public class StartScreenHandler : MonoBehaviour
 
         switch (textIndex)
         {
-            case 4:
+            case 3:
                 if (!inspector.activeInHierarchy)
                 {
                     //Activate the inspector
@@ -90,35 +93,35 @@ public class StartScreenHandler : MonoBehaviour
                 }
                 break;
 
-            case 5:
+            case 4:
                 if (inspector.gameObject)
                 {
                     ActivateSlider("ParticlesSlider", particlesGenerator.numParticles);
                 }
                 break;
 
-            case 7:
+            case 6:
                 if (inspector.gameObject)
                 {
                     ActivateSlider("SubStepsSlider", particlesGenerator.subSteps);
                 }
                 break;
 
-            case 9:
+            case 8:
                 if (inspector.gameObject)
                 {
                     ActivateSlider("MaxSpeedSlider", particlesGenerator.speedClamp);
                 }
                 break;
 
-            case 10:
+            case 9:
                 if (inspector.gameObject)
                 {
                     ActivateSlider("BounceDampSlider", particlesGenerator.bounceDamp);
                 }
                 break;
 
-            case 11:
+            case 10:
                 if (inspector.gameObject)
                 {
                     inspector.transform.Find("RandomiseButton").gameObject.SetActive(true);

@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -73,7 +74,7 @@ public class Inspector : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
     public void OnSliderChanged(Slider slider)
     {
-        Text txt = slider.transform.Find("Value").GetComponent<Text>();
+        TMP_Text txt = slider.transform.Find("Value").GetComponent<TMP_Text>();
 
         if(txt)
         {
