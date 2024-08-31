@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using TMPro;
 using UnityEngine;
 
@@ -18,6 +19,11 @@ public class FPSMeasurer : MonoBehaviour
     }
 
     private void Update()
+    {
+        MeasureFPS();
+    }
+
+    private void MeasureFPS()
     {
         if (timeCounter < refreshTime)
         {

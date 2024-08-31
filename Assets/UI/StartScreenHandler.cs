@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using TMPro;
 using Unity.Mathematics;
 using Unity.VisualScripting;
-using UnityEditor.SearchService;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -34,6 +33,8 @@ public class StartScreenHandler : MonoBehaviour
 
     public TextSettings[] textSettings;
 
+    private ScreenHandler screenHandler;
+
     private int textIndex = 0;
 
     private float numParticles;
@@ -42,6 +43,7 @@ public class StartScreenHandler : MonoBehaviour
 
     private float timer = 0;
 
+
     private void Start()
     {
         particlesGenerator = mainCamera.GetComponent<ParticlesGenerator>();
@@ -49,11 +51,24 @@ public class StartScreenHandler : MonoBehaviour
 
         text = GetComponent<TMP_Text>();
 
+        screenHandler = mainCamera.GetComponent<ScreenHandler>();
+
         ChangeText(textSettings[textIndex]);
     }
 
     private void Update()
     {
+        if(screenHandler.blurEnabled)
+        {
+            text.color = new Color(text.color.r, text.color.g, text.color.b, 0f);
+            return;
+        }
+
+        else
+        {
+            text.color = new Color(text.color.r, text.color.g, text.color.b, 1f);
+        }
+
         particleGrowthTimer += Time.deltaTime; 
         timer += Time.deltaTime;
 
@@ -67,7 +82,7 @@ public class StartScreenHandler : MonoBehaviour
             if(textIndex >= textSettings.Length)
             {
                 //Destroy itself if complete
-                Destroy(this);
+                Destroy(gameObject);
                 return;
             }
             ChangeText(textSettings[textIndex]);

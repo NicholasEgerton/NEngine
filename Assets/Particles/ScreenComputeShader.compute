@@ -5,12 +5,52 @@
 // with cs.SetTexture
 RWTexture2D<float4> Result;
 
+int2 Res;
+
 float DeltaTime;
 
 float FadeSpeed;
 
+bool BlurEnabled;
+
+void Blur(uint3 id) {
+    float4 avg = float4(0, 0, 0, 1);
+
+    //Iterate in a 3x3 square and average the colors
+    //Start at (-1, -1)
+    int x = -1;
+    int y = -1;
+
+    for (int i = 0; i < 9; i++) {
+        int2 pixel = id.xy + int2(x, y);
+
+        if (pixel.x <= 0 || pixel.x >= Res.x || pixel.y <= 0 || pixel.y >= Res.y) {
+            continue;
+        }
+
+        avg.rgb += Result[pixel].rgb;
+        
+        if (x == 1) {
+            x = -1;
+            y++;
+        }
+
+        else {
+            x++;
+        }
+    }
+
+    avg /= 9;
+
+    Result[id.xy] = avg;
+}
+
 [numthreads(10,10,1)]
 void CSMain (uint3 id : SV_DispatchThreadID)
 {
+    if (BlurEnabled) {
+        Blur(id);
+    }
+
     Result[id.xy] -= FadeSpeed * DeltaTime;
 }

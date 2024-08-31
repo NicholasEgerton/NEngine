@@ -6,7 +6,6 @@ using System.Security.Cryptography;
 using Unity.Mathematics;
 using Unity.VisualScripting;
 using UnityEditor;
-using UnityEditor.TextCore.Text;
 using UnityEngine;
 using UnityEngine.UIElements;
 using UnityEngine.XR.WSA;
