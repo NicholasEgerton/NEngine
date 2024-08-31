@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using TMPro;
 using Unity.Mathematics;
 using Unity.VisualScripting;
@@ -139,7 +140,17 @@ public class StartScreenHandler : MonoBehaviour
             case 10:
                 if (inspector.gameObject)
                 {
-                    inspector.transform.Find("RandomiseButton").gameObject.SetActive(true);
+                    Inspector iScript = inspector.GetComponent<Inspector>();
+
+                    if (!iScript.minimised)
+                    {
+                        inspector.transform.Find("RandomiseButton").gameObject.SetActive(true);
+                    }
+
+                    else if(!iScript.activeNames.Contains("RandomiseButton"))
+                    {
+                        iScript.activeNames.Add("RandomiseButton");
+                    }
                 }
                 break;
         }
@@ -147,11 +158,18 @@ public class StartScreenHandler : MonoBehaviour
 
     private void ActivateSlider(string name, float val)
     {
-        if (!inspector.GetComponent<Inspector>().minimised)
+        Inspector iScript = inspector.GetComponent<Inspector>();
+
+        if (!iScript.minimised)
         {
             Slider s = inspector.transform.Find(name).GetComponent<Slider>();
             s.gameObject.SetActive(true);
             s.value = val;
+        }
+
+        else if(!iScript.activeNames.Contains(name))
+        {
+            iScript.activeNames.Add(name);
         }
     }
 

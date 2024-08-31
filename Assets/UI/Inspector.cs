@@ -16,7 +16,7 @@ public class Inspector : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
     public bool minimised = false;
 
-    private string[] activeNames;
+    public List<string> activeNames;
 
     private void Start()
     {
@@ -37,7 +37,7 @@ public class Inspector : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     {
         if (!minimised)
         {
-            activeNames = new string[transform.childCount];
+            activeNames = new List<string>();
             for (int i = 0; i < transform.childCount; i++)
             {
                 GameObject g = transform.GetChild(i).gameObject;
@@ -47,7 +47,7 @@ public class Inspector : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 {
                     if (g.activeInHierarchy)
                     {
-                        activeNames[i] = name;
+                        activeNames.Add(name);
                     }
 
                     g.SetActive(false);
