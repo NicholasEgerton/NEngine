@@ -1,0 +1,37 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+struct Particle
+{
+    float2 position;
+    float2 oldPosition;
+    float4 color;
+};
+
+RWStructuredBuffer<Particle> particles;
+
+uint numParticles;
+
+float deltaTime;
+
+float2 acceleration;
+
+[numthreads(8, 1, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= numParticles)
+    {
+        return;
+    }
+    
+    Particle particle = particles[id.x];
+    
+    float2 tempPosition = particle.position;
+    
+    //Info about equation: https://en.wikipedia.org/wiki/Verlet_integration
+    particle.position = 2 * particle.position - particle.oldPosition + acceleration * pow(deltaTime, 2);
+
+    particle.oldPosition = tempPosition;
+    
+    particles[id.x] = particle;
+}

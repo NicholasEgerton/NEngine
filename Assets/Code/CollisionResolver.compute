@@ -1,0 +1,221 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+struct Particle
+{
+    float2 position;
+    float2 oldPosition;
+    float4 color;
+};
+
+struct CollisionResult
+{
+    //How far the particle's position needs to move.
+    float2 correction;
+    //How much the particle's velocity needs to change.
+    float2 impulse;
+};
+
+//The read-only buffer in ping-pong buffering, see: https://ostefani.dev/tech-notes/ping-pong-technique
+StructuredBuffer<Particle> originalParticles;
+//The write buffer.
+RWStructuredBuffer<Particle> newParticles;
+
+uint numParticles;
+float radius;
+
+float deltaTime;
+
+//INCLUDES THE RADIUS.
+float2 minScreenBounds; //I.e minResolution + radius.
+float2 maxScreenBounds; //I.e maxResolution - radius.
+
+//How much energy is retained after collisions. See: https://en.wikipedia.org/wiki/Coefficient_of_restitution
+float coefficientOfRestitution;
+
+float2 CalculateVelocity(Particle particle)
+{
+    //This is a key Verlet equation.
+    return (particle.position - particle.oldPosition) / deltaTime;
+}
+
+//The minimum squared distance between two particles before we can consider them essentially in the same position.
+//Need this incase of strange situations where particles are inside each other.
+#define minSquaredDistance 1e-8f
+
+CollisionResult ResolveWallCollisionsOnParticle(Particle particle)
+{
+    CollisionResult collisionResult;
+    collisionResult.correction = float2(0.0f, 0.0f);
+    collisionResult.impulse = float2(0.0f, 0.0f);
+    
+    float2 velocity = CalculateVelocity(particle);
+
+    if (particle.position.x < minScreenBounds.x)
+    {
+        collisionResult.correction.x = minScreenBounds.x - particle.position.x;
+        
+        //Only apply the impulse if the particle is moving towards the wall.
+        if (velocity.x < 0)
+        {
+            collisionResult.impulse.x = 2 * abs(velocity.x) * coefficientOfRestitution;
+        }
+    }
+    
+    else if (particle.position.x > maxScreenBounds.x)
+    {
+        collisionResult.correction.x = maxScreenBounds.x - particle.position.x;
+        
+        //Only apply the impulse if the particle is moving towards the wall.
+        if (velocity.x > 0)
+        {
+            collisionResult.impulse.x = -2 * abs(velocity.x) * coefficientOfRestitution;
+        }
+    }
+
+    if (particle.position.y < minScreenBounds.y)
+    {
+        collisionResult.correction.y = minScreenBounds.y - particle.position.y;
+        
+        //Only apply the impulse if the particle is moving towards the wall.
+        if (velocity.y < 0)
+        {
+            collisionResult.impulse.y = 2 * abs(velocity.y) * coefficientOfRestitution;
+        }
+    }
+    
+    else if (particle.position.y > maxScreenBounds.y)
+    {
+        collisionResult.correction.y = maxScreenBounds.y - particle.position.y;
+        
+        //Only apply the impulse if the particle is moving towards the wall.
+        if (velocity.y > 0)
+        {
+            collisionResult.impulse.y = - 2 * abs(velocity.y) * coefficientOfRestitution;
+        }
+    }
+    
+    return collisionResult;
+}
+
+CollisionResult ResolveParticlePairCollision(int id1, int id2)
+{
+    Particle particle1 = originalParticles[id1];
+    Particle particle2 = originalParticles[id2];
+    
+    CollisionResult collisionResult;
+    collisionResult.correction = float2(0.0f, 0.0f);
+    collisionResult.impulse = float2(0.0f, 0.0f);
+    
+    float2 relativePosition = particle2.position - particle1.position;
+    float radiiSum = radius * 2;
+
+    //Note: dot(vector, vector) = magnitude of that vector squared.
+    //The magnitude of relative position is the distance between the particles' centres.
+    //So we can say that if the square magnitude of their relative position is less than the sum of their radii, they are overlapping.
+    if (dot(relativePosition, relativePosition) < pow(radiiSum, 2))
+    {
+        //Check if the particles are basically inside each other in the same position.
+        //In that case we need to do some special edge case.
+        bool fallBack = dot(relativePosition, relativePosition) < minSquaredDistance;
+        
+        //The edge case is particuarly important here, as if relativePosition is near or equal to 0, normalize(relativePosition) can throw an error.
+        float2 normalisedRelativePosition;
+        
+        //The normal case:
+        if (!fallBack)
+        {
+            normalisedRelativePosition = normalize(relativePosition);
+            
+            float2 initialRelativeVelocity = CalculateVelocity(particle2) - CalculateVelocity(particle1);
+
+            //Only apply an impulse if they are moving towards each other, otherwise the velocity is already okay.
+            //Note: If the dot product of two vectors is < 0, it means the angle between them is obtuse (moving away).
+            if (dot(relativePosition, initialRelativeVelocity) < 0)
+            {
+                //https://en.wikipedia.org/wiki/Inelastic_collision for equation.
+                collisionResult.impulse = 0.5f * (1 + coefficientOfRestitution) * dot(initialRelativeVelocity, normalisedRelativePosition) * normalisedRelativePosition;
+            }
+        }
+        else
+        {
+            //The particles are in the same position, so the correction has to be arbitrary/random.
+            //However, the correction must be deterministic such that they are always seperated in opposite directions.
+            //This is because each particle only changes its own properties.
+            //https://gist.github.com/keijiro/ee7bc388272548396870
+            float randomFloat = frac(sin(dot(float2(id1, id2), float2(12.9898, 78.233))) * 43758.5453); //Float between 0 and 1.
+            
+            normalisedRelativePosition = float2(cos(randomFloat), sin(randomFloat));
+            
+            //Ensures it will be opposite, as both particles/threads will see opposite id1 and id2, so will disagree on normalisedRelativePosition.
+            if (id1 > id2)
+            {
+                normalisedRelativePosition *= -1;
+            }
+        }
+        
+        float2 penetration = (radiiSum * normalisedRelativePosition - relativePosition);
+        
+        //The correction is the penetration * 0.5f, as both particles will move away. So each does half of the seperation needed.
+        collisionResult.correction = -penetration * 0.5f;
+     
+    }
+    
+    return collisionResult;
+}
+
+[numthreads(8, 1, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= numParticles)
+    {
+        return;
+    }
+    
+    Particle particle = originalParticles[id.x];
+    
+    //Rather than add the correction and impulse after each collision resolution, we accumulate them in a totalCorrection and totalImpulse.
+    //This is very important for the following reason:
+    //If each particle just read and wrote to the same array, threads could read wrong info from the buffer that was recently changed by another thread.
+    //To prevent this we have implemented two buffers, originalParticles and newParticles.
+    //This prevents that problem, but if we updated the particle after each collision, and then calculated collisions after,
+    //I.e a sequential approach, different particles can come to different conclusions about collisions due to the order they check them.
+    //Furthermore, they would still be updating other particle positions, and writing to the same indexes, overwriting each other.
+    
+    //Instead, we operate under the philosophy that each particle may read info about other particles, but only updates itself.
+    //Each particle is responsible for its own collisions.
+    //And, since we use totalCorrection and totalImpulse, the order we loop through the array is completely irrelevant.
+    //So different particles will always come to the same conclusion about the collisions.
+    float2 totalCorrection = float2(0.0f, 0.0f);
+    float2 totalImpulse = float2(0.0f, 0.0f);
+    
+    
+    for (uint i = 0; i < numParticles; i++)
+    {
+        //Don't need to process collision if it is the same particle itself.
+        if (id.x == i)
+        {
+            continue;
+        }
+        
+        CollisionResult collisionResult = ResolveParticlePairCollision(id.x, i);
+        
+        totalCorrection += collisionResult.correction;
+        totalImpulse += collisionResult.impulse;
+    }
+    
+    CollisionResult collisonResult = ResolveWallCollisionsOnParticle(particle);
+    totalCorrection += collisonResult.correction;
+    totalImpulse += collisonResult.impulse;
+    
+    //Apply the impulse first, not correction, as CalculateVelocity() depends on the particle position.
+    float2 velocity = CalculateVelocity(particle);
+    velocity += totalImpulse;
+    
+    particle.position += totalCorrection;
+    
+    //Go backwards in time to find a oldPosition that fits this new positon and velocity
+    particle.oldPosition = particle.position - velocity * deltaTime;
+    
+    newParticles[id.x] = particle;
+}
